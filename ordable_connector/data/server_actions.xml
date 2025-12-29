@@ -1,0 +1,38 @@
+<odoo>
+    <record id="action_update_data_to_odoo" model="ir.actions.server">
+        <field name="name">Update Data to Ordable</field>
+        <field name="model_id" ref="point_of_sale.model_pos_category"/> <!-- use the correct model external ID -->
+        <field name="binding_model_id" ref="point_of_sale.model_pos_category"/>
+        <field name="binding_view_types">list</field>
+        <field name="state">code</field>
+        <field name="code">
+        if records:
+            records.action_update_data_to_ordable()
+        </field>
+    </record>
+
+    <record id="action_product_update_data_to_ordable" model="ir.actions.server">
+        <field name="name">Update Data to Ordable</field>
+        <field name="model_id" ref="product.model_product_template"/>
+        <field name="binding_model_id" ref="product.model_product_template"/>
+        <field name="binding_view_types">list</field>
+        <field name="state">code</field>
+        <field name="code">
+        if records:
+            action = records.action_update_product_data_to_ordable()
+        </field>
+    </record>
+
+    <record id="action_pos_sale_update_data_to_ordable" model="ir.actions.server">
+        <field name="name">Update Data to Ordable</field>
+        <field name="model_id" ref="point_of_sale.model_pos_order"/>
+        <field name="binding_model_id" ref="point_of_sale.model_pos_order"/>
+        <field name="binding_view_types">list</field>
+        <field name="state">code</field>
+        <field name="code">
+            if records:
+            action = records.push_orders_to_ordable()
+        </field>
+    </record>
+
+</odoo>

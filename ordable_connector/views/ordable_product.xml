@@ -1,0 +1,16 @@
+<?xml version='1.0' encoding='utf-8'?>
+<odoo>
+
+    <record id="ordable_product_view_tree" model="ir.ui.view">
+        <field name="name">ordable.product.view.tree</field>
+        <field name="model">ordable.product</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="concept"/>
+                <field name="ordable_id"/>
+            </tree>
+        </field>
+    </record>
+
+</odoo>

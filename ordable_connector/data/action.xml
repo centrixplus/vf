@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="action_ordable_brand" model="ir.actions.act_window">
+        <field name="name">ordable.brand</field>
+        <field name="res_model">ordable.brand</field>
+        <field name="view_mode">tree,form</field>
+        <field name="target">inline</field>
+    </record>
+
+    <record id="action_ordable_product" model="ir.actions.act_window">
+        <field name="name">Ordable Products</field>
+        <field name="res_model">ordable.product</field>
+        <field name="view_mode">tree</field>
+    </record>
+</odoo>

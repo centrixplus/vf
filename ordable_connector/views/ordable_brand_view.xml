@@ -1,0 +1,41 @@
+<?xml version='1.0' encoding='utf-8'?>
+<odoo>
+    <!--vc_concepts tree view -->
+    <record id="ordable_brand_view_tree" model="ir.ui.view">
+        <field name="name">ordable.brand.view.tree</field>
+        <field name="model">ordable.brand</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="ordable_api_token"/>
+                <field name="ordable_base_url"/>
+                <field name="branch"/>
+                <field name="concept"/>
+                <field name="sync_ordable_info"/>
+                <field name="ordable_brand" widget="radio"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- res.concept form view -->
+    <record id="ordable_brand_view_form" model="ir.ui.view">
+        <field name="name">ordable.brand.view.form</field>
+        <field name="model">ordable.brand</field>
+        <field name="arch" type="xml">
+            <form string="">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="ordable_api_token"/>
+                        <field name="ordable_base_url"/>
+                        <field name="branch"/>
+                        <field name="concept"/>
+                        <field name="sync_ordable_info"/>
+                        <field name="ordable_brand" widget="radio"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+</odoo>

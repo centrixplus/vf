@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <menuitem id="ordable"
+                  name="Ordable"
+                  web_icon="ordable_connector,static/description/icon.png"
+                  sequence="11"
+        />
+        <menuitem id="ordable_configuration"
+                  name="Configuration"
+                  parent="ordable"
+                  sequence="6"/>
+        <menuitem id="ordable_configuration_brands"
+                  name="brands"
+                  parent="ordable_configuration"
+                  sequence="6"
+                  action="ordable_connector.action_ordable_brand"/>
+        <menuitem id="venturefood_configuration_ordable_product_settings"
+                  name="Ordable Products"
+                  parent="ordable_configuration"
+                  sequence="7"
+                  action="action_ordable_product"/>
+    </data>
+</odoo>
