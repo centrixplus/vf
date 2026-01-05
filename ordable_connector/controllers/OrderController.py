@@ -106,6 +106,38 @@ class OrderController(http.Controller):
                     'product_uom_qty': option['quantity'],
                     'price_unit': option['price'],
                 })
+
+        # Add delivery charge if applicable
+        is_delivery = order_data.get('is_delivery', False)
+        delivery_rate = order_data.get('delivery_rate', 0.0)
+
+        if is_delivery and delivery_rate > 0:
+            # Search for Delivery Charge product
+            delivery_product = request.env['product.product'].sudo().search([
+                ('name', '=', 'Delivery Charge'),
+                ('type', '=', 'service')
+            ], limit=1)
+
+            # Create Delivery Charge product if it doesn't exist
+            if not delivery_product:
+                delivery_template = request.env['product.template'].sudo().create({
+                    'name': 'Delivery Charge',
+                    'type': 'service',
+                    'list_price': delivery_rate,
+                    'categ_id': 1
+                })
+                delivery_product = delivery_template.product_variant_id
+                _logger.info(f"Created new Delivery Charge product with ID: {delivery_product.id}")
+
+            # Add delivery charge as a sale order line
+            request.env['sale.order.line'].sudo().create({
+                'order_id': sale_order.id,
+                'product_id': delivery_product.id,
+                'product_uom_qty': 1,
+                'price_unit': delivery_rate,
+            })
+            _logger.info(f"Added delivery charge of {delivery_rate} to Sale Order {sale_order.id}")
+
         _logger.info(f"Sale Order created with ID: {sale_order.id}")
 
         # Confirm the Sale Order
