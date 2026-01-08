@@ -53,6 +53,9 @@ class OrderController(http.Controller):
                     self.create_pos_order(order_data, payments_data, partner, brand)
                 else:
                     self.create_sale_order(order_data, payments_data, partner, brand)
+                    # Create payment for the sale order
+                    self.create_sale_order_payment(order_data, payments_data)
+
             return {'success': True, 'message': "Order Created Successfully."}
 
         except Exception as e:
@@ -60,6 +63,16 @@ class OrderController(http.Controller):
             return {'success': False, 'message': str(e)}
 
     def create_sale_order(self, order_data, payments_data, partner, brand):
+        # Check if sale order already exists with the same ordable_id and ordable_tracking_id
+        existing_order = request.env['sale.order'].sudo().search([
+            ('ordable_id', '=', order_data['id']),
+            ('ordable_tracking_id', '=', order_data['tracking_id'])
+        ], limit=1)
+
+        if existing_order:
+            _logger.info(f"Sale Order already exists with ordable_id: {order_data['id']} and ordable_tracking_id: {order_data['tracking_id']}. Skipping creation.")
+            return {'success': True, 'sale_order_id': existing_order.id, 'already_exists': True}
+
         sale_order_vals = {
             'partner_id': partner.id,
             'ordable_id': order_data['id'],
@@ -149,6 +162,29 @@ class OrderController(http.Controller):
 
         return {'success': True, 'sale_order_id': sale_order.id}
 
+    def create_sale_order_payment(self, order_data, payments_data):
+        # Search for the sale order using ordable_id and ordable_tracking_id
+        sale_order = request.env['sale.order'].sudo().search([
+            ('ordable_id', '=', order_data['id']),
+            ('ordable_tracking_id', '=', order_data['tracking_id'])
+        ], limit=1)
+
+        if not sale_order:
+            _logger.error(f"Sale Order not found with ordable_id: {order_data['id']} and ordable_tracking_id: {order_data['tracking_id']}")
+            return {'success': False, 'message': 'Sale Order not found'}
+
+        _logger.info(f"Processing payment for Sale Order ID: {sale_order.id}")
+
+        # Check if sale order is confirmed, if not confirm it
+        if sale_order.state in ['draft', 'sent']:
+            try:
+                sale_order.action_confirm()
+                _logger.info(f"Sale Order {sale_order.id} confirmed successfully")
+            except Exception as e:
+                _logger.exception(f"Failed to confirm Sale Order {sale_order.id}: {e}")
+                return {'success': False, 'message': f'Failed to confirm sale order: {str(e)}'}
+
+        return {'success': True, 'sale_order_id': sale_order.id}
 
     def create_pos_order(self, order_data, payments_data, partner, brand):
         # 1. SESSION, COMPANY, AND TAX ACQUISITION
@@ -302,7 +338,7 @@ class OrderController(http.Controller):
 
         return {'success': True, 'pos_order_id': pos_order.id}
 
-    @http.route('/ordable/payment', type='http', auth='public', website=True, cors="*", methods=["GET"], csrf=False)
+    @http.route('/ordable/payment', type='http', auth='public', website=True, cors="*", methods=["POST"], csrf=False)
     def ordable_payment(self, **kwargs):
         try:
             _logger.info(
