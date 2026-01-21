@@ -11,3 +11,9 @@ class OrdableBrand(models.Model):
     concept = fields.Many2one("res.concept", string="Concept")
     sync_ordable_info = fields.Boolean("Is Sync Ordable")
     ordable_brand = fields.Selection([('pos', 'POS Order'), ('sale', 'Sale Order')], string="Ordable Brand", default="pos")
+    company_id = fields.Many2one(
+        'res.company',
+        string='Company',
+        default=lambda self: self.env.company,
+        required=True
+    )

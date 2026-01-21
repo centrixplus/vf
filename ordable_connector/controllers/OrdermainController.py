@@ -9,60 +9,13 @@ import re
 _logger = logging.getLogger(__name__)
 
 
-class OrderController(http.Controller):
+class OrdermainController(http.Controller):
 
-    def create_order(self, payment_data, brand):
-        tracking_id = payment_data.get('tracking_id')
-        api_token = brand.ordable_api_token
-        base_url = brand.ordable_base_url
-        url = f"{base_url}/orders?tracking_id={tracking_id}"
-        headers = {
-            'Authorization': api_token
-        }
-        try:
-            response = requests.request("GET", url, headers=headers)
-            response_data = response.json()
-            if (response_data.get('success')):
-                orders_data = response_data.get('data')
-                _logger.info(f"Order data retrieved successfully from Ordable with ID {tracking_id}.")
-                self.create_odoo_order(orders_data, payment_data, brand)
-            else:
-                _logger.error(f"Failed to retrieve Order data '{tracking_id}' from Ordable.")
-        except requests.exceptions.RequestException as e:
-            _logger.error(f"Failed to retrieve Order data '{tracking_id}' from Ordable: {e}")
+    def create_sale_order(self, order_data, partner, brand):
+        # Validate required data
+        if not order_data.get('items'):
+            raise ValueError("Order must contain at least one item")
 
-    def create_odoo_order(self, orders_data, payments_data, brand):
-        try:
-            for order_data in orders_data:
-                phone = order_data.get('phone', '').strip()
-                normalized_phone = re.sub(r'^\+965', '', phone)
-                partner = request.env['res.partner'].sudo().search([
-                    '|', '|', '|',
-                    ('phone', '=', phone),
-                    ('mobile', '=', phone),
-                    ('phone', '=', normalized_phone),
-                    ('mobile', '=', normalized_phone)
-                ], limit=1)
-                if not partner:
-                    partner = request.env['res.partner'].sudo().create({
-                        'name': order_data['customer_name'],
-                        'phone': order_data['phone'],
-                    })
-                    _logger.info(f"Created new partner: {partner.name} with phone {partner.phone}")
-                if brand.ordable_brand == "pos":
-                    self.create_pos_order(order_data, payments_data, partner, brand)
-                else:
-                    self.create_sale_order(order_data, payments_data, partner, brand)
-                    # Create payment for the sale order
-                    self.create_sale_order_payment(order_data, payments_data)
-
-            return {'success': True, 'message': "Order Created Successfully."}
-
-        except Exception as e:
-            _logger.error(f"Error in creating sale orders: {str(e)}")
-            return {'success': False, 'message': str(e)}
-
-    def create_sale_order(self, order_data, payments_data, partner, brand):
         # Check if sale order already exists with the same ordable_id and ordable_tracking_id
         existing_order = request.env['sale.order'].sudo().search([
             ('ordable_id', '=', order_data['id']),
@@ -70,16 +23,21 @@ class OrderController(http.Controller):
         ], limit=1)
 
         if existing_order:
-            _logger.info(f"Sale Order already exists with ordable_id: {order_data['id']} and ordable_tracking_id: {order_data['tracking_id']}. Skipping creation.")
+            _logger.info(
+                f"Sale Order already exists with ordable_id: {order_data['id']} and ordable_tracking_id: {order_data['tracking_id']}. Skipping creation.")
             return {'success': True, 'sale_order_id': existing_order.id, 'already_exists': True}
 
+        # Prepare sale order values
         sale_order_vals = {
             'partner_id': partner.id,
             'ordable_id': order_data['id'],
             'ordable_tracking_id': order_data['tracking_id'],
             'user_id': 1,
-            'company_id': 1,
+            'company_id': brand.company_id.id,
+            'note': order_data.get('special_remarks', ''),
+            'client_order_ref': order_data.get('tracking_id'),
         }
+
         sale_order = request.env['sale.order'].sudo().create(sale_order_vals)
         for item in order_data.get('items', []):
             product = request.env['product.product'].sudo().search([
@@ -152,111 +110,101 @@ class OrderController(http.Controller):
             _logger.info(f"Added delivery charge of {delivery_rate} to Sale Order {sale_order.id}")
 
         _logger.info(f"Sale Order created with ID: {sale_order.id}")
-
         # Confirm the Sale Order
         try:
             sale_order.action_confirm()
             _logger.info("Sale Order Confirmed with ID: %s", sale_order.id)
+
+            # Check if payment is complete and create invoice
+            if order_data.get('payment_complete'):
+                self.sale_order_invoice_payment(sale_order)
         except Exception as e:
             _logger.exception("Failed to confirm Sale Order ID %s: %s", sale_order.id, e)
 
         return {'success': True, 'sale_order_id': sale_order.id}
 
-    def create_sale_order_payment(self, order_data, payments_data):
-        # Search for the sale order using ordable_id and ordable_tracking_id
-        sale_order = request.env['sale.order'].sudo().search([
-            ('ordable_id', '=', order_data['id']),
-            ('ordable_tracking_id', '=', order_data['tracking_id'])
-        ], limit=1)
+    def sale_order_invoice_payment(self, sale_order):
+        """
+        Create invoice for the sale order when payment is complete
+        """
+        try:
+            # Create invoice from the sale order
+            invoice = sale_order._create_invoices()
 
-        if not sale_order:
-            _logger.error(f"Sale Order not found with ordable_id: {order_data['id']} and ordable_tracking_id: {order_data['tracking_id']}")
-            return {'success': False, 'message': 'Sale Order not found'}
-
-        _logger.info(f"Processing payment for Sale Order ID: {sale_order.id}")
-
-        # Check if sale order is confirmed, if not confirm it
-        if sale_order.state in ['draft', 'sent']:
-            try:
-                sale_order.action_confirm()
-                _logger.info(f"Sale Order {sale_order.id} confirmed successfully")
-            except Exception as e:
-                _logger.exception(f"Failed to confirm Sale Order {sale_order.id}: {e}")
-                return {'success': False, 'message': f'Failed to confirm sale order: {str(e)}'}
-
-        # Check if invoice exists, if not create it
-        if not sale_order.invoice_ids:
-            try:
-                # Create invoice
-                invoice = sale_order._create_invoices()
-                _logger.info(f"Invoice created for Sale Order {sale_order.id}: Invoice ID {invoice.id}")
+            if invoice:
+                _logger.info(f"Invoice created with ID: {invoice.id} for Sale Order: {sale_order.id}")
 
                 # Post the invoice
                 invoice.action_post()
                 _logger.info(f"Invoice {invoice.id} posted successfully")
-            except Exception as e:
-                _logger.exception(f"Failed to create/post invoice for Sale Order {sale_order.id}: {e}")
-                return {'success': False, 'message': f'Failed to create invoice: {str(e)}'}
 
-        # Process each payment from the payment_data
-        for payment in payments_data.get('payments', []):
-            payment_method = payment.get('payment_method')
-            payment_amount = payment.get('amount')
-            payment_reference = payment.get('payment_reference', '')
-            payment_payid = payment.get('payment_payid', '')
-            payment_complete = payment.get('payment_complete', False)
+                # Register payment after invoice is posted
+                payment = self.register_invoice_payment(invoice)
+                if payment:
+                    _logger.info(f"Payment registered with ID: {payment.id} for Invoice: {invoice.id}")
 
-            if not payment_complete:
-                _logger.warning(f"Payment not complete for tracking_id: {payment.get('tracking_id')}. Skipping payment creation.")
-                continue
+                return {'success': True, 'invoice_id': invoice.id, 'payment_id': payment.id if payment else None}
+            else:
+                _logger.warning(f"Failed to create invoice for Sale Order: {sale_order.id}")
+                return {'success': False, 'message': 'Invoice creation failed'}
 
-            if not payment_method or payment_amount is None:
-                _logger.warning("Payment entry is missing method or amount. Skipping.")
-                continue
+        except Exception as e:
+            _logger.exception(f"Error creating invoice for Sale Order {sale_order.id}: {e}")
+            return {'success': False, 'message': str(e)}
 
-            try:
-                # Find the appropriate payment journal based on payment method
-                journal = request.env['account.journal'].sudo().search([
-                    ('type', 'in', ['bank', 'cash', 'myfatoorah']),
-                    ('company_id', '=', sale_order.company_id.id)
-                ], limit=1)
+    def register_invoice_payment(self, invoice):
+        """
+        Register payment for the posted invoice
+        """
+        try:
+            # Get default payment method (cash/bank journal)
+            payment_journal = request.env['account.journal'].sudo().search([
+                ('type', 'in', ['cash', 'bank']),
+                ('company_id', '=', invoice.company_id.id)
+            ], limit=1)
 
-                if not journal:
-                    _logger.warning(f"No suitable journal found for payment method '{payment_method}'")
-                    continue
+            if not payment_journal:
+                _logger.warning(f"No payment journal found for company: {invoice.company_id.name}")
+                return None
 
-                # Create the payment
-                payment_vals = {
-                    'payment_type': 'inbound',
-                    'partner_type': 'customer',
-                    'partner_id': sale_order.partner_id.id,
-                    'amount': payment_amount,
-                    'journal_id': journal.id,
-                    'ref': f"{payment_method} - Ref: {payment_reference} - PayID: {payment_payid}",
-                    'currency_id': sale_order.currency_id.id,
-                    'date': datetime.now(),
-                }
+            # Prepare payment values
+            payment_vals = {
+                'payment_type': 'inbound',
+                'partner_type': 'customer',
+                'partner_id': invoice.partner_id.id,
+                'amount': invoice.amount_total,
+                'journal_id': payment_journal.id,
+                'date': datetime.now().date(),
+                'ref': f"Payment for {invoice.name}",
+                'currency_id': invoice.currency_id.id,
+            }
 
-                payment_record = request.env['account.payment'].sudo().create(payment_vals)
-                payment_record.action_post()
+            # Create payment
+            payment = request.env['account.payment'].sudo().create(payment_vals)
+            _logger.info(f"Payment created with ID: {payment.id}")
 
-                _logger.info(f"Payment created successfully for Sale Order {sale_order.id} with amount {payment_amount}")
+            # Post the payment
+            payment.action_post()
+            _logger.info(f"Payment {payment.id} posted successfully")
 
-                # Reconcile the payment with the invoice if invoice exists
-                if sale_order.invoice_ids:
-                    invoice = sale_order.invoice_ids[0]
-                    lines_to_reconcile = payment_record.line_ids.filtered(lambda l: l.account_id == invoice.line_ids[0].account_id)
-                    invoice_lines = invoice.line_ids.filtered(lambda l: l.account_id == lines_to_reconcile[0].account_id)
-                    (lines_to_reconcile + invoice_lines).reconcile()
-                    _logger.info(f"Payment reconciled with invoice for Sale Order {sale_order.id}")
+            # Reconcile payment with invoice
+            # invoice_lines = invoice.line_ids.filtered(lambda line: line.account_id.account_type in ['asset_receivable', 'liability_payable'])
+            # payment_lines = payment.line_ids.filtered(lambda line: line.account_id.account_type in ['asset_receivable', 'liability_payable'])
+            #
+            # if invoice_lines and payment_lines:
+            #     (invoice_lines + payment_lines).reconcile()
+            #     _logger.info(f"Payment {payment.id} reconciled with Invoice {invoice.id}")
 
-            except Exception as e:
-                _logger.exception(f"Failed to create payment for Sale Order {sale_order.id}: {e}")
-                continue
+            return payment
 
-        return {'success': True, 'sale_order_id': sale_order.id}
+        except Exception as e:
+            _logger.exception(f"Error registering payment for Invoice {invoice.id}: {e}")
+            return None
 
-    def create_pos_order(self, order_data, payments_data, partner, brand):
+    def create_pos_order(self, order_data, partner, brand):
+        """
+        Create POS order in the Call Center POS
+        """
         # 1. SESSION, COMPANY, AND TAX ACQUISITION
         pos_session = request.env['pos.session'].sudo().search([
             ('state', '=', 'opened'),
@@ -264,13 +212,12 @@ class OrderController(http.Controller):
         ], limit=1)
 
         if not pos_session:
-            _logger.error("No active POS session found.")
-            return {'success': False, 'error': 'No active POS session found.'}
+            _logger.error("No active POS session found for Call Center")
+            return {'success': False, 'error': 'No active POS session found for Call Center'}
 
         company_id = pos_session.config_id.company_id.id
 
-        # CRITICAL FIX 1: Find the 0% Sales Tax Record
-        # This record is mandatory for Odoo's calculation logic to run, even if tax amount is 0.
+        # Find the 0% Sales Tax Record (mandatory for Kuwait)
         zero_tax = request.env['account.tax'].sudo().search([
             ('company_id', '=', company_id),
             ('type_tax_use', '=', 'sale'),
@@ -280,9 +227,19 @@ class OrderController(http.Controller):
         tax_ids_to_use = zero_tax.ids if zero_tax else []
 
         if not zero_tax:
-            _logger.warning(f"No 0% Sales Tax record found for company ID {company_id}.")
+            _logger.warning(f"No 0% Sales Tax record found for company ID {company_id}")
 
-        # 2. POS ORDER CREATION
+        # 2. CHECK FOR DUPLICATE POS ORDER
+        existing_pos_order = request.env['pos.order'].sudo().search([
+            ('ordable_id', '=', order_data.get('id')),
+            ('ordable_tracking_id', '=', order_data.get('tracking_id'))
+        ], limit=1)
+
+        if existing_pos_order:
+            _logger.info(f"POS Order already exists with ordable_id: {order_data.get('id')} and ordable_tracking_id: {order_data.get('tracking_id')}. Skipping creation.")
+            return {'success': True, 'pos_order_id': existing_pos_order.id, 'already_exists': True}
+
+        # 3. POS ORDER CREATION
         pos_order_vals = {
             'partner_id': partner.id,
             'session_id': pos_session.id,
@@ -292,38 +249,41 @@ class OrderController(http.Controller):
             'fiscal_position_id': partner.property_account_position_id.id or False,
             'ordable_id': order_data.get('id'),
             'ordable_tracking_id': order_data.get('tracking_id'),
-            'concept_id': brand.concept.id,
+            'concept_id': brand.concept.id if hasattr(brand, 'concept') else False,
             'amount_tax': 0.0,
-            'amount_total': order_data.get('total'),
-            'amount_paid': order_data.get('total'),
+            'amount_total': order_data.get('total', 0.0),
+            'amount_paid': order_data.get('total', 0.0),
             'amount_return': 0.0
         }
+
         pos_order = request.env['pos.order'].sudo().create(pos_order_vals)
-        _logger.info(f"Order reference: {pos_order.pos_reference}")
-        # 3. ORDER LINE CREATION (Finalized with all manual computed fields)
+        _logger.info(f"POS Order created with reference: {pos_order.pos_reference}")
+
+        # 4. ORDER LINE CREATION - Items
         for item in order_data.get('items', []):
+            # Search for product with concept filter
             product = request.env['product.product'].sudo().search([
                 ('name', '=', item['name']),
                 ('product_tmpl_id.concept_ids', 'in', brand.concept.id)
             ], limit=1)
 
-            # Product Creation Logic (Ensures product exists)
+            # Create product if doesn't exist
             if not product:
                 product_template = request.env['product.template'].sudo().create({
                     'name': item['name'],
-                    'list_price': item['price'],
+                    'list_price': item.get('price', 0),
                     'categ_id': 1,
                     'concept_ids': [(6, 0, [brand.concept.id])],
-                    'taxes_id': [(6, 0, tax_ids_to_use)],  # Link 0% tax to new product
+                    'taxes_id': [(6, 0, tax_ids_to_use)],
                 })
                 product = product_template.product_variant_id
+                _logger.info(f"Created new product: {product.name} with ID: {product.id}")
 
             unit_price = item.get('price', 0)
             quantity = item.get('quantity', 1)
-
-            # Manually calculate subtotal (since tax is 0% in Kuwait)
             subtotal = unit_price * quantity
 
+            # Create POS order line
             request.env['pos.order.line'].sudo().create({
                 'order_id': pos_order.id,
                 'product_id': product.id,
@@ -335,7 +295,7 @@ class OrderController(http.Controller):
                 'full_product_name': product.display_name,
             })
 
-            # Optional: create separate lines for each option
+            # Create separate lines for item options
             for option in item.get('options', []):
                 option_product = request.env['product.product'].sudo().search([
                     ('name', '=', option['name']),
@@ -345,7 +305,7 @@ class OrderController(http.Controller):
                 if not option_product:
                     option_template = request.env['product.template'].sudo().create({
                         'name': option['name'],
-                        'list_price': option['price'],
+                        'list_price': option.get('price', 0),
                         'categ_id': 1,
                         'concept_ids': [(6, 0, [brand.concept.id])],
                         'taxes_id': [(6, 0, tax_ids_to_use)],
@@ -366,8 +326,43 @@ class OrderController(http.Controller):
                     'tax_ids': [(6, 0, tax_ids_to_use)],
                     'full_product_name': f"{product.display_name} - {option['name']}",
                 })
-        # 4. PAYMENT CREATION AND VALIDATION
-        for payment in payments_data.get('payments', []):
+
+        # 5. ADD DELIVERY CHARGE IF APPLICABLE
+        is_delivery = order_data.get('is_delivery', False)
+        delivery_rate = order_data.get('delivery_rate', 0.0)
+
+        if is_delivery and delivery_rate > 0:
+            delivery_product = request.env['product.product'].sudo().search([
+                ('name', '=', 'Delivery Charge'),
+                ('type', '=', 'service')
+            ], limit=1)
+
+            if not delivery_product:
+                delivery_template = request.env['product.template'].sudo().create({
+                    'name': 'Delivery Charge',
+                    'type': 'service',
+                    'list_price': delivery_rate,
+                    'categ_id': 1,
+                    'taxes_id': [(6, 0, tax_ids_to_use)],
+                })
+                delivery_product = delivery_template.product_variant_id
+                _logger.info(f"Created Delivery Charge product with ID: {delivery_product.id}")
+
+            request.env['pos.order.line'].sudo().create({
+                'order_id': pos_order.id,
+                'product_id': delivery_product.id,
+                'qty': 1,
+                'price_unit': delivery_rate,
+                'price_subtotal': delivery_rate,
+                'price_subtotal_incl': delivery_rate,
+                'tax_ids': [(6, 0, tax_ids_to_use)],
+                'full_product_name': 'Delivery Charge',
+            })
+            _logger.info(f"Added delivery charge of {delivery_rate} to POS Order {pos_order.id}")
+
+        # 6. PAYMENT CREATION
+        payments = order_data.get('payments', [])
+        for payment in payments:
             payment_method_name = payment.get('payment_method')
             payment_amount = payment.get('amount')
 
@@ -375,6 +370,7 @@ class OrderController(http.Controller):
                 _logger.warning("Payment entry is missing method or amount. Skipping.")
                 continue
 
+            # Find POS payment method
             payment_method = request.env['pos.payment.method'].sudo().search([
                 ('name', 'ilike', payment_method_name)
             ], limit=1)
@@ -383,11 +379,7 @@ class OrderController(http.Controller):
                 _logger.warning(f"Payment method '{payment_method_name}' not found. Skipping payment.")
                 continue
 
-            if not payment_method:
-                _logger.warning(f"Payment method '{payment_method_name}' not found. Skipping payment.")
-                continue
             try:
-
                 payment_vals = {
                     'amount': payment_amount,
                     'payment_method_id': payment_method.id,
@@ -396,24 +388,24 @@ class OrderController(http.Controller):
                 }
 
                 request.env['pos.payment'].sudo().create(payment_vals)
+                _logger.info(f"Payment added to POS order with method: {payment_method_name}")
             except Exception as e:
                 _logger.exception(f"Failed to add payment to POS order ID {pos_order.id}: {e}")
-        # Final validation
+
+        # 7. VALIDATE AND MARK ORDER AS PAID
         try:
             pos_order.action_pos_order_paid()
-            _logger.info(f"POS Order created and validated with ID: {pos_order.id}")
+            _logger.info(f"POS Order validated and paid with ID: {pos_order.id}")
         except Exception as e:
-            _logger.exception(f"Failed to confirm POS order ID {pos_order.id}: {e}")
+            _logger.exception(f"Failed to validate POS order ID {pos_order.id}: {e}")
             return {'success': False, 'error': f"Order validation failed: {e}"}
 
         return {'success': True, 'pos_order_id': pos_order.id}
-
-    @http.route('/ordable/payment2', type='http', auth='public', website=True, cors="*", methods=["POST"], csrf=False)
-    def ordable_payment(self, **kwargs):
+    @http.route('/ordable/order/create', type='http', auth='public', website=True, cors="*", methods=["POST"], csrf=False)
+    def ordable_order_create(self, **kwargs):
         try:
-            _logger.info(
-                f'========= Data received from ordable payment webhook {kwargs} {request.get_json_data()} {request.params}===============')
-            payment_data = request.get_json_data()
+            _logger.info(f'========= Data received from ordable payment webhook {kwargs} {request.get_json_data()} {request.params}===============')
+            data = request.get_json_data()
             brand_id = kwargs.get('brand')
             brand = request.env['ordable.brand'].sudo().search([('branch', '=', brand_id)], limit=1)
             if not brand:
@@ -422,17 +414,28 @@ class OrderController(http.Controller):
                     'status': 'error',
                     'message': 'Brand ID missing'
                 }, status=400)
+            partner = request.env['res.partner'].sudo().search([
+                ('phone', '=', data.get('phone'))
+            ], limit=1)
 
-            self.create_order(payment_data, brand)
+            if not partner:
+                partner = request.env['res.partner'].sudo().create({
+                    'name': data.get('customer_name'),
+                    'phone': data.get('phone'),
+                    'country_id': request.env.ref('base.kw').id,
+                })
+
+            if brand.ordable_brand == "pos":
+                self.create_pos_order(data, partner, brand)
+            else:
+                self.create_sale_order(data, partner, brand)
 
             return request.make_json_response({
                 'status': 'success',
                 'message': 'Data successfully submitted!'
             })
-
         except Exception as e:
             return request.make_json_response({
                 'status': 'error',
                 'message': str(e)
             })
-
