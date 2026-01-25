@@ -26,6 +26,17 @@ class PosOrder(models.Model):
 
     def send_order_to_ordable(self):
         brand = self.env['ordable.brand'].search([('concept', '=', self.concept_id.id)])
+
+        # Check if sync is enabled for this brand
+        if not brand.sync_ordable_info:
+            _logger.info(f"Skipping brand {brand.name}, sync_ordable_info is disabled")
+            return
+
+        # Check if order already has ordable_id (already synced)
+        if self.ordable_id:
+            _logger.info(f"Skipping order {self.id}, already synced to Ordable with ordable_id: {self.ordable_id}")
+            return
+
         if not brand.ordable_api_token:
             _logger.info(f"Skipping brand {brand.name}, no API token")
         else:
