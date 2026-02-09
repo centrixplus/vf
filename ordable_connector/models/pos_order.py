@@ -127,3 +127,155 @@ class PosOrder(models.Model):
                 _logger.error(f"Failed to send order for brand {brand.name}: {response.text}")
         except Exception as e:
             _logger.error(f"Exception sending order for brand {brand.name}: {str(e)}")
+
+    # ============================================
+    # ORDABLE STATUS MAPPING - API INTEGRATION
+    # Added: 2026-02-09
+    # Purpose: Update Ordable status when POS order stage changes
+    # Can be safely removed if reverting
+    # ============================================
+
+    def write(self, vals):
+        """Override to trigger Ordable status update when stage changes"""
+        result = super(PosOrder, self).write(vals)
+
+        # Only proceed if order_stage_id was changed
+        if 'order_stage_id' in vals:
+            for order in self:
+                # Update Ordable status via API
+                order._update_ordable_status()
+
+        return result
+
+    def _update_ordable_status(self):
+        """
+        Update order status in Ordable API when stage changes.
+        Only calls API if all conditions are met.
+        """
+        # STEP 1: Check if order is synced with Ordable
+        if not (self.ordable_id or self.ordable_tracking_id):
+            _logger.debug(f"Order {self.name}: Not synced with Ordable (no ordable_id or ordable_tracking_id)")
+            return
+
+        # STEP 2: Check if order has a stage
+        if not self.order_stage_id:
+            _logger.debug(f"Order {self.name}: No order stage set")
+            return
+
+        # STEP 3: Get Ordable status from mapping
+        ordable_status = self._get_ordable_status_for_stage(self.order_stage_id.id)
+        if not ordable_status:
+            _logger.info(
+                f"Order {self.name}: Stage '{self.order_stage_id.name}' has no Ordable mapping. Skipping API call."
+            )
+            return  # No mapping = No API call
+
+        # STEP 4: Check if order has concept
+        if not self.concept_id:
+            _logger.debug(f"Order {self.name}: No concept assigned")
+            return
+
+        # STEP 5: Get brand configuration from concept
+        brand = self.env['ordable.brand'].search([
+            ('concept', '=', self.concept_id.id),
+            ('sync_ordable_info', '=', True)
+        ], limit=1)
+
+        if not brand:
+            _logger.info(f"Order {self.name}: No active Ordable brand for concept '{self.concept_id.name}'")
+            return
+
+        if not brand.ordable_api_token or not brand.ordable_base_url:
+            _logger.warning(f"Order {self.name}: Missing API credentials for brand '{brand.name}'")
+            return
+
+        # STEP 6: All checks passed - Call API
+        _logger.info(
+            f"Order {self.name}: Updating Ordable status to '{ordable_status}' for stage '{self.order_stage_id.name}'"
+        )
+        self._call_ordable_status_api(ordable_status, brand)
+
+    def _get_ordable_status_for_stage(self, stage_id):
+        """
+        Get mapped Ordable status for given POS stage.
+        Returns False if no mapping exists or mapping is inactive.
+        """
+        if not stage_id:
+            return False
+
+        mapping = self.env['ordable.status.map'].search([
+            ('pos_stage_id', '=', stage_id),
+            ('active', '=', True)
+        ], limit=1)
+
+        if mapping:
+            _logger.debug(f"Found mapping: Stage '{mapping.pos_stage_id.name}' → Ordable '{mapping.ordable_status}'")
+            return mapping.ordable_status
+        else:
+            return False
+
+    def _build_ordable_status_payload(self, ordable_status):
+        """
+        Build API payload for status update.
+        Determines reference type (enable_id or tracking_id) based on available data.
+        """
+        if self.ordable_id:
+            order_id = str(self.ordable_id)
+            reference_by = 'order_id'
+        else:
+            order_id = self.ordable_tracking_id
+            reference_by = 'tracking_id'
+
+        payload = {
+            "order_id": order_id,
+            "reference_by": reference_by,
+            "status": ordable_status
+        }
+
+        _logger.debug(f"Built Ordable payload: {payload}")
+        return payload
+
+    def _call_ordable_status_api(self, ordable_status, brand):
+        """
+        Call Ordable API to update order status.
+        Handles request/response and logs results.
+        """
+        # Build payload
+        payload = self._build_ordable_status_payload(ordable_status)
+
+        # Prepare API call
+        url = f"{brand.ordable_base_url.rstrip('/')}/order_status/"
+        headers = {
+            'Authorization': brand.ordable_api_token,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+
+        try:
+            _logger.info(f"Calling Ordable API: {url}")
+            _logger.debug(f"Payload: {payload}")
+
+            response = requests.patch(url, json=payload, headers=headers, timeout=10)
+            if response.status_code in [200, 201]:
+                _logger.info(
+                    f"Order {self.name}: Ordable status updated successfully. "
+                    f"Response: {response.text}"
+                )
+            else:
+                error_msg = f"API returned {response.status_code}: {response.text}"
+                _logger.error(f"Order {self.name}: Ordable API error - {error_msg}")
+
+        except requests.exceptions.Timeout:
+            error_msg = "API request timeout (10s)"
+            _logger.error(f"Order {self.name}: {error_msg}")
+
+        except requests.exceptions.ConnectionError as e:
+            error_msg = f"Connection error: {str(e)}"
+            _logger.error(f"Order {self.name}: {error_msg}")
+
+        except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
+            _logger.error(f"Order {self.name}: {error_msg}")
+
+    # END ORDABLE STATUS MAPPING - API INTEGRATION
+    # ============================================

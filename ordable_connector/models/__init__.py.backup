@@ -2,6 +2,5 @@
 
 from . import ordable_brand
 from . import ordable_product
-from . import ordable_status_map  # ORDABLE STATUS MAPPING - Added 2026-02-09
 from . import pos_order
 from . import sale

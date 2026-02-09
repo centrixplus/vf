@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+============================================
+ORDABLE STATUS MAPPING - DEFAULT DATA
+Created: 2026-02-09
+Purpose: Default mappings for 8 POS order stages
+Can be safely removed if reverting
+============================================
+-->
+<odoo>
+    <data noupdate="1">
+        <!-- Mapping 1: New → New -->
+        <record id="ordable_map_new" model="ordable.status.map">
+            <field name="pos_stage_id" ref="ordable_extra.order_stage_new"/>
+            <field name="ordable_status">New</field>
+            <field name="sequence">10</field>
+        </record>
+
+        <!-- Mapping 2: In Kitchen → Received -->
+        <record id="ordable_map_in_kitchen" model="ordable.status.map">
+            <field name="pos_stage_id" ref="ordable_extra.order_stage_in_kitchen"/>
+            <field name="ordable_status">Received</field>
+            <field name="sequence">20</field>
+        </record>
+
+        <!-- Mapping 3: Cooked → Received -->
+        <record id="ordable_map_cooked" model="ordable.status.map">
+            <field name="pos_stage_id" ref="ordable_extra.order_stage_cooked"/>
+            <field name="ordable_status">Received</field>
+            <field name="sequence">30</field>
+        </record>
+
+        <!-- Mapping 4: Ready → Received -->
+        <record id="ordable_map_ready" model="ordable.status.map">
+            <field name="pos_stage_id" ref="ordable_extra.order_stage_ready"/>
+            <field name="ordable_status">Received</field>
+            <field name="sequence">40</field>
+        </record>
+
+        <!-- Mapping 5: With Driver → Out For Delivery -->
+        <record id="ordable_map_with_driver" model="ordable.status.map">
+            <field name="pos_stage_id" ref="ordable_extra.order_stage_with_driver"/>
+            <field name="ordable_status">Out For Delivery</field>
+            <field name="sequence">50</field>
+        </record>
+
+        <!-- Mapping 6: Delivered → Complete -->
+        <record id="ordable_map_delivered" model="ordable.status.map">
+            <field name="pos_stage_id" ref="ordable_extra.order_stage_delivered"/>
+            <field name="ordable_status">Complete</field>
+            <field name="sequence">60</field>
+        </record>
+
+        <!-- Mapping 7: Closed → Complete -->
+        <record id="ordable_map_closed" model="ordable.status.map">
+            <field name="pos_stage_id" ref="ordable_extra.order_stage_closed"/>
+            <field name="ordable_status">Complete</field>
+            <field name="sequence">70</field>
+        </record>
+
+        <!-- Mapping 8: Cancelled → Cancelled -->
+        <record id="ordable_map_cancelled" model="ordable.status.map">
+            <field name="pos_stage_id" ref="ordable_extra.order_stage_cancelled"/>
+            <field name="ordable_status">Cancelled</field>
+            <field name="sequence">80</field>
+        </record>
+    </data>
+</odoo>
+<!-- END ORDABLE STATUS MAPPING DATA -->

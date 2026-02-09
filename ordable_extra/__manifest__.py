@@ -22,11 +22,15 @@
     'data': [
         # security
         'security/ir.model.access.csv',
+        # Data (must load before views that reference them)
+        'data/order_stage_data.xml',
         # Wizard
         # Views
         'views/res_concept.xml',
         'views/product.xml',
         'views/category.xml',
+        'views/order_stage_views.xml',
+        'views/pos_order_views.xml',
         # data
         'data/action.xml',
         # Menu

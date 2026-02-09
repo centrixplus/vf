@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+============================================
+ORDABLE STATUS MAPPING VIEWS
+Created: 2026-02-09
+Purpose: UI for managing POS stage to Ordable status mappings
+Can be safely removed if reverting
+============================================
+-->
+<odoo>
+    <data>
+        <!-- Tree View - Inline Editable -->
+        <record id="view_ordable_status_map_tree" model="ir.ui.view">
+            <field name="name">ordable.status.map.tree</field>
+            <field name="model">ordable.status.map</field>
+            <field name="arch" type="xml">
+                <tree string="Ordable Status Mappings" editable="bottom">
+                    <field name="sequence" widget="handle"/>
+                    <field name="pos_stage_id" options="{'no_create': True, 'no_open': True}"/>
+                    <field name="ordable_status"/>
+                    <field name="active" widget="boolean_toggle"/>
+                </tree>
+            </field>
+        </record>
+
+        <!-- Form View -->
+        <record id="view_ordable_status_map_form" model="ir.ui.view">
+            <field name="name">ordable.status.map.form</field>
+            <field name="model">ordable.status.map</field>
+            <field name="arch" type="xml">
+                <form string="Ordable Status Mapping">
+                    <sheet>
+                        <widget name="web_ribbon" title="Archived" bg_color="bg-danger"
+                                attrs="{'invisible': [('active', '=', True)]}"/>
+                        <group>
+                            <group>
+                                <field name="pos_stage_id" options="{'no_create': True}"/>
+                                <field name="ordable_status"/>
+                            </group>
+                            <group>
+                                <field name="sequence"/>
+                                <field name="active" widget="boolean_toggle"/>
+                            </group>
+                        </group>
+                        <group string="Information">
+                            <p class="text-muted">
+                                This mapping controls which Ordable status is sent to the API
+                                when a POS order reaches this stage. Uncheck 'Active' to
+                                temporarily disable API calls for this stage.
+                            </p>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Action -->
+        <record id="action_ordable_status_map" model="ir.actions.act_window">
+            <field name="name">Ordable Status Mapping</field>
+            <field name="res_model">ordable.status.map</field>
+            <field name="view_mode">tree,form</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Create Ordable Status Mapping
+                </p>
+                <p>
+                    Map POS order stages to Ordable API statuses. When an order stage changes,
+                    the corresponding Ordable status will be sent via API.
+                </p>
+            </field>
+        </record>
+
+        <!-- Menu Item under Ordable > Configuration -->
+        <menuitem
+            id="menu_ordable_status_map"
+            name="Ordable Status Mapping"
+            parent="ordable_configuration"
+            action="action_ordable_status_map"
+            sequence="8"/>
+    </data>
+</odoo>
+<!-- END ORDABLE STATUS MAPPING VIEWS -->

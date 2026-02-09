@@ -1,3 +1,5 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_ordable_brand,access.ordable.brand,model_ordable_brand,,1,1,1,1
 access_ordable_product,access.ordable.product,model_ordable_product,,1,1,1,1
+access_ordable_status_map_user,access.ordable.status.map.user,model_ordable_status_map,point_of_sale.group_pos_user,1,0,0,0
+access_ordable_status_map_manager,access.ordable.status.map.manager,model_ordable_status_map,point_of_sale.group_pos_manager,1,1,1,1

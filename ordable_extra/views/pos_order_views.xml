@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Inherit POS Order Form View -->
+        <record id="view_pos_pos_form_inherit_ordable_extra" model="ir.ui.view">
+            <field name="name">pos.order.form.inherit.ordable.extra</field>
+            <field name="model">pos.order</field>
+            <field name="inherit_id" ref="point_of_sale.view_pos_pos_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <field name="order_stage_id" options="{'no_create': True, 'no_open': True}"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- Inherit POS Order Tree View -->
+        <record id="view_pos_order_tree_inherit_ordable_extra" model="ir.ui.view">
+            <field name="name">pos.order.tree.inherit.ordable.extra</field>
+            <field name="model">pos.order</field>
+            <field name="inherit_id" ref="point_of_sale.view_pos_order_tree"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='partner_id']" position="after">
+                    <field name="order_stage_id" optional="show"/>
+                </xpath>
+            </field>
+        </record>
+    </data>
+</odoo>

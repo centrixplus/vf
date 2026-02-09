@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Order Stage Tree View -->
+        <record id="view_order_stage_tree" model="ir.ui.view">
+            <field name="name">order.stage.tree</field>
+            <field name="model">order.stage</field>
+            <field name="arch" type="xml">
+                <tree string="Order Stages" editable="bottom">
+                    <field name="sequence" widget="handle"/>
+                    <field name="name"/>
+                    <field name="active" widget="boolean_toggle"/>
+                </tree>
+            </field>
+        </record>
+
+        <!-- Order Stage Form View -->
+        <record id="view_order_stage_form" model="ir.ui.view">
+            <field name="name">order.stage.form</field>
+            <field name="model">order.stage</field>
+            <field name="arch" type="xml">
+                <form string="Order Stage">
+                    <sheet>
+                        <div class="oe_button_box" name="button_box">
+                            <widget name="web_ribbon" title="Archived" bg_color="bg-danger" attrs="{'invisible': [('active', '=', True)]}"/>
+                        </div>
+                        <group>
+                            <group>
+                                <field name="name"/>
+                                <field name="sequence"/>
+                            </group>
+                            <group>
+                                <field name="active" widget="boolean_toggle"/>
+                            </group>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Order Stage Action -->
+        <record id="action_order_stage" model="ir.actions.act_window">
+            <field name="name">Order Stages</field>
+            <field name="res_model">order.stage</field>
+            <field name="view_mode">tree,form</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Create a new Order Stage
+                </p>
+                <p>
+                    Define stages for your POS orders workflow (e.g., New, In Kitchen, Ready, Delivered).
+                </p>
+            </field>
+        </record>
+
+        <!-- Menu Item under Point of Sale > Configuration -->
+        <menuitem
+            id="menu_order_stage"
+            name="Order Stages"
+            parent="point_of_sale.menu_point_config_product"
+            action="action_order_stage"
+            sequence="50"/>
+    </data>
+</odoo>

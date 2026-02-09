@@ -23,13 +23,10 @@
     'data': [
         # security
         'security/ir.model.access.csv',
-        # Data (must load before views) - ORDABLE STATUS MAPPING
-        'data/ordable_status_map_data.xml',
         # Wizard
         # Views
         'views/ordable_brand_view.xml',
         'views/ordable_product.xml',
-        'views/ordable_status_map_views.xml',  # ORDABLE STATUS MAPPING
         # data
         'data/action.xml',
         'data/server_actions.xml',
